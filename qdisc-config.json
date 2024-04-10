@@ -1,0 +1,7 @@
+{
+    "reset_timeout" : "400ms",
+    "admit_bytes" : "128",
+    "evict_timeout" : "1000ms",
+    "non_hh_weight" : "2",
+    "hh_limit" : "3"
+}
