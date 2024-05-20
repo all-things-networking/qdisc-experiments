@@ -5,8 +5,42 @@ import sys
 import time
 import json
 import math
+import threading
 
 from scapy.all import IP, UDP, TCP, Ether, sendp, Raw
+
+raw_data = {} # holds throughput measurement for all flows
+bytes_recv = [] # holds temporary measurement to calculate throughput
+lock = threading.Lock() # lock for bytes_recv
+stop_threads = False
+
+def do_stat(fout_path, N):
+    global bytes_recv, raw_data, lock, stop_threads
+    # by adjust the inner loop,  we can control the frequency and measurement period
+    # e.g. j = 10, time.sleep(1) -> dump 10 pts at a time, per sec
+    # not necessary tho
+    while True:
+        j = 0
+        while j < 1: # dump thoughput for every set of collection
+
+            for i in range(N):        
+                raw_data[str(i)].append(bytes_recv[i])
+
+            # clear the temporary list
+            with lock:
+                bytes_recv = [0] * N
+
+            # throughput measurement period - 10s
+            # TODO: parametrize the period
+            time.sleep(10)
+            j += 1
+
+        # dump data file and generate a diagram
+        with open(fout_path, 'w') as outfp:
+            json_obj =  json.dumps(raw_data, indent = 4)
+            outfp.write(json_obj)
+        
+        if stop_threads: break
 
 class Sender():
     def __init__(self, src_addr, recv_addr, src_port, iface, if_hwaddr, recv_hwaddr):
@@ -22,6 +56,8 @@ class Sender():
 
     
     def send_packets(self, flow_id, size):
+        global bytes_recv, lock
+
         # CASE2: sread large packets into multiple 
         # this maxsize doesn't change the overall shape much
         # so to decrease the pkt count, use 1000
@@ -48,6 +84,10 @@ class Sender():
             pkt = pkt /IP(dst= self.recv_addr, src= self.src_addr) / UDP(dport=1234, sport= self.src_port) / Raw(load=final_message)
             sendp(pkt, iface= self.iface, verbose=False)
 
+            # update stats record
+            with lock:
+                bytes_recv[flow_id] += len(pkt)
+
         # outfp.close()
 
 # T = int(hhf_config["hh_limit"]) # count
@@ -55,7 +95,8 @@ class Sender():
 # E = int(hhf_config["evict_timeout"][:-2]) # ms
 # H = int(hhf_config["admit_bytes"]) # bytes
 # C = int(hhf_config["reset_timeout"][:-2]) # ms
-def run_experiment(sender, hh_count, T, W, E, H, C):
+def run_experiment(sender, hh_count, T, W, E, H, C, fout_path):
+    global bytes_recv, lock
     N = 3 * T # total flow number
     hh_rate_limit = H/1000000 / C * 1000 # Mbps
 
@@ -103,7 +144,10 @@ def run_experiment(sender, hh_count, T, W, E, H, C):
 
 # For this function, one needs to open this json config
 def main():
+    global bytes_recv, raw_data, lock, stop_threads
+
     parameter_path = sys.argv[1]
+    fout_path = sys.argv[2]
     with open(parameter_path, 'r') as json_file:
         para_dict = json.load(json_file)
 
@@ -117,15 +161,47 @@ def main():
         para_dict["recv_hwaddr"]
         )
 
-    run_experiment(
+    # initialize the data dictionary
+    N = int(para_dict["T"]) * 3
+    for i in range(N): 
+        raw_data[str(i)] = []
+    bytes_recv = [0] * N
+    print_dump_thread = threading.Thread(target=do_stat, args=(fout_path, N, ))
+    
+    
+    sniff_thread = threading.Thread(
+        target=run_experiment, 
+        args=(
         sender, 
         para_dict["hh_count"],
         para_dict["T"], 
         para_dict["W"], 
         para_dict["E"], 
         para_dict["H"], 
-        para_dict["C"]
-        )
+        para_dict["C"], 
+        fout_path
+        ) )
+    
+    sniff_thread.start()  
+    print_dump_thread.start()
+
+
+    # run_experiment(
+    #     sender, 
+    #     para_dict["hh_count"],
+    #     para_dict["T"], 
+    #     para_dict["W"], 
+    #     para_dict["E"], 
+    #     para_dict["H"], 
+    #     para_dict["C"], 
+    #     fout_path
+    #     )
+
+    
+
+    stop_threads = True
+    sniff_thread.join()
+    print_dump_thread.join()
 
 
 if __name__ == '__main__':

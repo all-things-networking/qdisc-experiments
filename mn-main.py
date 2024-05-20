@@ -35,7 +35,7 @@ class HostSend():
         config_string = ' '.join( "%s %s" %(key, value) for key, value in config_dict.items() )
         return self.host.cmd( 'tc qdisc add dev %s-eth0 root %s %s' %(self.name, qdisc_type, config_string) )
 
-    def start_run(self, hh_count, T, W, E, H, C):
+    def start_run(self, hh_count, T, W, E, H, C, logfname):
         # create a dictionary and save it to json, used by the sender
         sender_parameters = {
             "hh_count": hh_count,
@@ -57,7 +57,7 @@ class HostSend():
             outfp.write(json_obj)
         
         # execute the sender program
-        result = self.host.cmd('python3 sender.py {}'.format(outfname))
+        result = self.host.cmd('python3 sender.py {} {}'.format(outfname, logfname))
         return result
 
 class HostRecv():
@@ -192,7 +192,7 @@ def main(config_path):
         h_send.set_qdisc('hhf', hhf_config)
         # run_i
         log_recv_path = h_recv.start_run("log-receiver.json")
-        log_send_path = h_send.start_run(hh_count, T, W, E, H, C)
+        log_send_path = h_send.start_run(hh_count, T, W, E, H, C, "log-sender.json")
         # generate graph 
         # subprocess.run(
             # "python3 getGraph.py {} {}_plot.json 10".format("log-receiver.json", str(hh_count)), 
@@ -201,7 +201,8 @@ def main(config_path):
         #     )
         # os.system("python3 getGraph.py {} {}_plot.json 10".format("log-receiver.json", str(hh_count)))
         # os.system("python3 trial.py")
-        getGraph.generate_graph("log-receiver.json", "{}_plot.jpg".format(str(hh_count)), 10)
+        getGraph.generate_graph("log-receiver.json", "{}_r_plot.jpg".format(str(hh_count)), 10)
+        getGraph.generate_graph("log-sender.json", "{}_s_plot.jpg".format(str(hh_count)), 10)
 
         # reset qdisc
         h_send.clear_qdisc('hhf')        

@@ -11,20 +11,10 @@ from scapy.all import IP, ICMP, TCP, UDP, sniff, Raw
 raw_data = {} # holds throughput measurement for all flows
 bytes_recv = [] # holds temporary measurement to calculate throughput
 lock = threading.Lock() # lock for bytes_recv
-
-def handle_packet(pkt):
-    global bytes_recv, lock
-    # all packets are UDP for now
-    if UDP in pkt:
-        # match the flow_id
-        payload = pkt[Raw].load.decode("utf-8")
-        if payload.startswith("flowid"):
-            flow_id = int(payload.split("flowid")[1].split("end")[0])
-            with lock:
-                bytes_recv[flow_id] += len(pkt)
+stop_threads = False
 
 def do_stat(fout_path, N):
-    global bytes_recv, raw_data, lock
+    global bytes_recv, raw_data, lock, stop_threads
     # by adjust the inner loop,  we can control the frequency and measurement period
     # e.g. j = 10, time.sleep(1) -> dump 10 pts at a time, per sec
     # not necessary tho
@@ -48,12 +38,26 @@ def do_stat(fout_path, N):
         with open(fout_path, 'w') as outfp:
             json_obj =  json.dumps(raw_data, indent = 4)
             outfp.write(json_obj)
+        
+        if stop_threads: break
+
+def handle_packet(pkt):
+    global bytes_recv, lock
+    # all packets are UDP for now
+    if UDP in pkt:
+        # match the flow_id
+        payload = pkt[Raw].load.decode("utf-8")
+        if payload.startswith("flowid"):
+            flow_id = int(payload.split("flowid")[1].split("end")[0])
+            with lock:
+                bytes_recv[flow_id] += len(pkt)
+
     
 def do_sniff():
     sniff(iface="h2-eth0", prn = lambda x: handle_packet(x))  # store=0 to not store packets
 
 def main(fout_path):
-    global bytes_recv, raw_data, lock
+    global bytes_recv, raw_data, lock, stop_threads
 
     # log = ""
     # load hhf-config and set some variables
@@ -83,6 +87,7 @@ def main(fout_path):
     print_dump_thread.start()
 
     # Wait for threads to finish (not necessary in this case as they run indefinitely)
+    stop_threads = True
     sniff_thread.join()
     print_dump_thread.join()
 
