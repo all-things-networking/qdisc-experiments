@@ -11,6 +11,7 @@ from scapy.all import IP, ICMP, TCP, UDP, sniff, Raw
 raw_data = {} # holds throughput measurement for all flows
 bytes_recv = [] # holds temporary measurement to calculate throughput
 lock = threading.Lock() # lock for bytes_recv
+stop_threads = False
 
 def handle_packet(pkt):
     global bytes_recv, lock
@@ -23,39 +24,34 @@ def handle_packet(pkt):
             with lock:
                 bytes_recv[flow_id] += len(pkt)
 
-def do_stat(fout_path, N):
-    global bytes_recv, raw_data, lock
-    # by adjust the inner loop,  we can control the frequency and measurement period
-    # e.g. j = 10, time.sleep(1) -> dump 10 pts at a time, per sec
-    # not necessary tho
+def do_stat(fout_path, N, measurement_interval):
+    global bytes_recv, raw_data, lock, stop_threads
+
     while True:
-        j = 0
-        while j < 1: # dump thoughput for every set of collection
 
-            for i in range(N):        
-                raw_data[str(i)].append(bytes_recv[i])
+        for i in range(N):        
+            raw_data[str(i)].append(bytes_recv[i])
 
-            # clear the temporary list
-            with lock:
-                bytes_recv = [0] * N
+        # clear the temporary list
+        with lock:
+            bytes_recv = [0] * N
 
-            # throughput measurement period - 10s
-            # TODO: parametrize the period
-            time.sleep(10)
-            j += 1
+        # throughput measurement period - in secs
+        time.sleep(measurement_interval)
 
         # dump data file and generate a diagram
         with open(fout_path, 'w') as outfp:
             json_obj =  json.dumps(raw_data, indent = 4)
             outfp.write(json_obj)
+        
+        if stop_threads: break
     
 def do_sniff():
     sniff(iface="h2-eth0", prn = lambda x: handle_packet(x))  # store=0 to not store packets
 
-def main(fout_path):
-    global bytes_recv, raw_data, lock
+def main(fout_path, measurement_interval):
+    global bytes_recv, raw_data, lock, stop_threads
 
-    # log = ""
     # load hhf-config and set some variables
     hhf_config = {}
     with open('qdisc-config.json') as json_file:
@@ -77,17 +73,19 @@ def main(fout_path):
 
 
     sniff_thread = threading.Thread(target=do_sniff)
-    print_dump_thread = threading.Thread(target=do_stat, args=(fout_path, N, ))
+    print_dump_thread = threading.Thread(target=do_stat, args=(fout_path, N, measurement_interval))
     
     sniff_thread.start()
     print_dump_thread.start()
 
     # Wait for threads to finish (not necessary in this case as they run indefinitely)
     sniff_thread.join()
+    stop_threads = True
     print_dump_thread.join()
 
     
 
 if __name__ == '__main__':   
     fout_path = sys.argv[1]
-    main(fout_path)
+    measurement_interval = int(sys.argv[2])
+    main(fout_path, measurement_interval)
