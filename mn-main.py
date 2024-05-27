@@ -7,7 +7,6 @@ from mininet.link import TCLink
 import re
 import json
 import time
-# import test_reset_timeout
 import subprocess
 import math
 import os
@@ -35,7 +34,7 @@ class HostSend():
         config_string = ' '.join( "%s %s" %(key, value) for key, value in config_dict.items() )
         return self.host.cmd( 'tc qdisc add dev %s-eth0 root %s %s' %(self.name, qdisc_type, config_string) )
 
-    def start_run(self, hh_count, T, W, E, H, C, logfname):
+    def start_run(self, hh_count, T, W, E, H, C, logfname, measurement_interval):
         # create a dictionary and save it to json, used by the sender
         sender_parameters = {
             "hh_count": hh_count,
@@ -57,7 +56,7 @@ class HostSend():
             outfp.write(json_obj)
         
         # execute the sender program
-        result = self.host.cmd('python3 sender.py {} {}'.format(outfname, logfname))
+        result = self.host.cmd('python3 sender.py {} {} {}'.format(outfname, logfname, measurement_interval, ))
         return result
 
 class HostRecv():
@@ -68,8 +67,8 @@ class HostRecv():
     def cmd(self, cmd_string):
         return self.host.cmd(cmd_string)
     
-    def start_run(self, logfname):
-        result = self.host.cmd('python3 receiver.py {} &'.format(logfname))
+    def start_run(self, logfname, measurement_interval):
+        result = self.host.cmd('python3 receiver.py {} {} &'.format(logfname, measurement_interval, ))
         return result
 
 
@@ -84,8 +83,6 @@ class TwoHostTopo(Topo):
 class NetController():
     def __init__(self):
         topo = TwoHostTopo()
-        # TODO: link rate limit investigation
-        # net = Mininet(topo=topo, host=CPULimitedHost, link=TCLink)
         self.net = Mininet(topo=topo)
         self.net.start()
     
@@ -113,61 +110,11 @@ class NetController():
     def terminate(self):
         self.net.stop()
 
-    
-
-# should create a helper file and only load once
-# returns a command line argument used to setup an hhf qdisc
-def get_hhf_config():
-    hhf_config = {}
-    with open('qdisc-config.json') as json_file:
-        hhf_config = json.load(json_file)
-    
-    return ' '.join( "%s %s" %(key, value) for key, value in hhf_config.items() )
-
-
-
-def simpleTest():
-    # Create the network
-    topo = TwoHostTopo()
-    # net = Mininet(topo=topo, host=CPULimitedHost, link=TCLink)
-    net = Mininet(topo=topo)
-    net.start()
-
-    h1 = net.get('h1')
-    h2 = net.get('h2')
-    print( h1.cmd('kill %python3') )
-    print( h2.cmd('kill %python3') )
-
-    # find mac ports
-    h1_if = h1.cmd('ifconfig')
-    h2_if = h2.cmd('ifconfig')
-
-    pattern = r'ether\s[0-9A-Fa-f]+\:[0-9A-Fa-f]+\:[0-9A-Fa-f]+\:[0-9A-Fa-f]+\:[0-9A-Fa-f]+\:[0-9A-Fa-f]+'
-    h1_if_mac = re.search(pattern, h1_if).group(0).split()[1]
-    h2_if_mac = re.search(pattern, h2_if).group(0).split()[1]
-    # print("h1_if_mac: ", h1_if_mac)
-    # print("h2_if_mac: ", h2_if_mac)
-
-    # set hhf qdisc for h1
-    result1 = h1.cmd( 'tc qdisc add dev h1-eth0 root hhf %s' %get_hhf_config() )
-    print("set qdisc ", 'tc qdisc add dev h1-eth0 root hhf %s' %get_hhf_config())
-    print("h1 returned after adding qdisc: ", result1)
-
-    # execute sender and receiver
-    result2 = h2.cmd('python3 receiver.py log-receiver.json &')
-    result1 = h1.cmd('python3 sender.py {} {}'.format(h1_if_mac, h2_if_mac))
-    # result1 = h1.cmd('python3 sender.py {} {}'.format(h1_if_mac, h2_if_mac))
-    print("h1 returned: ", result1)
-    print("h2 returned: ", result2)
-
-    # time.sleep(10)
-    net.stop()
-
 
 # this is the main function for the experiment that measures the relationship between
 # variable: number of heavy hitter flows
 # dependent: throughput at both sender/receiver
-def main(config_path):
+def main(config_path, measurement_interval):
     # load hhf-config and set some variables
     hhf_config = {}
     with open(config_path) as json_file:
@@ -190,30 +137,18 @@ def main(config_path):
     hh_count = math.ceil(T/2) 
     while hh_count <= 2*T:
         h_send.set_qdisc('hhf', hhf_config)
+        
         # run_i
-        log_recv_path = h_recv.start_run("log-receiver.json")
-        log_send_path = h_send.start_run(hh_count, T, W, E, H, C, "log-sender.json")
-        # generate graph 
-        # subprocess.run(
-            # "python3 getGraph.py {} {}_plot.json 10".format("log-receiver.json", str(hh_count)), 
-        #     shell = True, 
-        #     executable="/bin/bash"
-        #     )
-        # os.system("python3 getGraph.py {} {}_plot.json 10".format("log-receiver.json", str(hh_count)))
-        # os.system("python3 trial.py")
-        getGraph.generate_graph("log-receiver.json", "{}_r_plot.jpg".format(str(hh_count)), 10)
-        getGraph.generate_graph("log-sender.json", "{}_s_plot.jpg".format(str(hh_count)), 10)
+        log_recv_path = h_recv.start_run("log-receiver.json", measurement_interval)
+        log_send_path = h_send.start_run(hh_count, T, W, E, H, C, "log-sender.json", measurement_interval)
+
+        # generate graph - two parallel graphs for a run
+        getGraph.generate_graph("log-receiver.json", "{}_r_plot.jpg".format(str(hh_count)), measurement_interval)
+        getGraph.generate_graph("log-sender.json", "{}_s_plot.jpg".format(str(hh_count)), measurement_interval)
 
         # reset qdisc
         h_send.clear_qdisc('hhf')        
         hh_count += T/4
-    
-    # get two parallel graphs for a run
-    # get_graph(log_send_path, log_recv_path)
-    # subprocess.run(
-    #     "python3 getGraph.py {} {}_plot.json 10".format("log-receiver.json", str(hh_count)), 
-    #     shell = True, 
-    #     executable="/bin/bash")
 
     # clean up
     net_ctrl.terminate()
@@ -223,5 +158,10 @@ def main(config_path):
 
     
 if __name__ == '__main__':
-    main('qdisc-config.json')
+    qdisc_config_fp = 'qdisc-config.json'
+
+    # the interval between each measurement, applied both at sender & receiver
+    measurement_interval = 5
+
+    main(qdisc_config_fp, measurement_interval)
 
