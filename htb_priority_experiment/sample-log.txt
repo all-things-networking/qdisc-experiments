@@ -1,0 +1,10 @@
+Listening on enp130s0 for TCP and UDP packets...
+Throughput (last 1 sec) - UDP: 0.00 kbit/s, TCP: 0.00 kbit/s
+Throughput (last 1 sec) - UDP: 0.00 kbit/s, TCP: 0.00 kbit/s
+Throughput (last 1 sec) - UDP: 0.00 kbit/s, TCP: 971.54 kbit/s
+Throughput (last 1 sec) - UDP: 0.00 kbit/s, TCP: 971.54 kbit/s
+Throughput (last 1 sec) - UDP: 0.00 kbit/s, TCP: 971.54 kbit/s
+Throughput (last 1 sec) - UDP: 92.29 kbit/s, TCP: 876.75 kbit/s
+Throughput (last 1 sec) - UDP: 80.75 kbit/s, TCP: 900.45 kbit/s
+Throughput (last 1 sec) - UDP: 103.82 kbit/s, TCP: 876.75 kbit/s
+.....
