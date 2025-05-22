@@ -10,3 +10,8 @@ This experiment uses Mininet for the setup. The user can change the QDisc config
 
 This experiment aims to reproduce a known issue discussed in the Linux mailing list:  
 [LARTC Message #23403](https://www.spinics.net/lists/lartc/msg23403.html)
+
+## HTB Hard Maximum Experiment
+
+This experiment aims to reproduce a known issue discussed in the Linux mailing list:  
+[Serverfault traffic shaping with HTB issue](https://serverfault.com/questions/254535/traffic-shaping-on-linux-with-htb-weird-results)
