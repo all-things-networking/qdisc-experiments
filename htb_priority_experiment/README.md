@@ -16,6 +16,21 @@ This experiment aims to reproduce a known issue discussed in the Linux mailing l
   - **Egress traffic rate** at the sender
   - **Ingress traffic rate** at the receiver
 
+### QDISC Command Used
+```bash
+sudo tc qdisc del dev enp130s0 root
+sudo tc qdisc add dev enp130s0 handle 1: root htb default 15
+sudo tc class add dev enp130s0 parent 1: classid 1:1 htb 1000kbit ceil 1000kbit
+sudo tc class add dev enp130s0 parent 1:1 classid 1:14 htb rate 200kbit ceil 1000kbit prio 1
+sudo tc class add dev enp130s0 parent 1:1 classid 1:15 htb rate 10kbit ceil 1000kbit prio 2
+sudo tc filter add dev enp130s0 parent 1: protocol ip u32 match ip tos 0xb8 0xff flowid 1:14
+sudo tc filter add dev enp130s0 parent 1: protocol ip u32 match ip tos 0x00 0xff flowid 1:15
+sudo tc qdisc add dev enp130s0 parent 1:14 handle 20: sfq limit 40
+sudo tc qdisc add dev enp130s0 parent 1:15 handle 50: pfifo limit 1000
+tc qdisc show
+```
+TODO: the tos fields to filter tcp/udp flows from the above tc commands, which were directly copied from the mailing list threads, don't filter out the flows as expected. 
+
 ---
 
 ## How to Run
@@ -44,6 +59,7 @@ Launch five instances of the UDP sender, ideally spaced 10 seconds apart:
 ```bash
 sudo -E python3 udpsender.py &
 ```
+Run five UDP instances on different CPUS to avoid the threshold (TODO)
 
 ### Monitor Egress Traffic
 In a separate terminal on the sender, run:
